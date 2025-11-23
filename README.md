@@ -1,6 +1,6 @@
 # 🦾 Text-to-Braille Converter
 
-**My Role:** Core C++ Firmware Developer
+**My Role:** -I developed the core C++ firmware to map ASCII characters to servo angles, implementing the precise control logic required to form readable Braille patterns.
 *Project developed in collaboration with Suyash Sharthi.*
 
 ![C++](https://img.shields.io/badge/c++-%2300599C.svg?style=for-the-badge&logo=c%2B%2B&logoColor=white)
