@@ -1,240 +1,131 @@
 #include <Servo.h>
-#include <SD.h> // Include the SD library
+#include <SD.h>
 
-bool pontinhos[6];
-int posicaoServo[6] = {0, 1, 2, 3, 4, 5};
+// --- Hardware Configuration ---
+#define NUM_SERVOS 6
+#define SERVO_UP_ANGLE 90
+#define SERVO_DOWN_ANGLE 0
+#define ACTUATION_DELAY 1000 // Time to hold the dot up (ms)
+#define SD_CHIP_SELECT 10
 
-int pinofmotor[6] = {2, 3, 4, 5, 6, 7};
-Servo myServo[6];
+// Servo Pin Mapping
+const int SERVO_PINS[NUM_SERVOS] = {2, 3, 4, 5, 6, 7};
 
-const int chipSelect = 10; // Pin connected to the SD card module's chip select
+// Global Objects
+Servo brailleServos[NUM_SERVOS];
+File dataFile;
 
-File dataFile; // File object for reading data from SD card
+// --- Braille Lookup Table ---
+// Maps characters 'a' through 'z' to 6-dot patterns (1 = UP, 0 = DOWN)
+// This replaces the inefficient switch-case statement.
+const bool BRAILLE_MAP[26][6] = {
+  {1,0,0,0,0,0}, // a
+  {1,0,1,0,0,0}, // b
+  {1,1,0,0,0,0}, // c
+  {1,1,0,1,0,0}, // d
+  {1,0,0,1,0,0}, // e
+  {1,1,1,0,0,0}, // f
+  {1,1,1,1,0,0}, // g
+  {1,0,1,1,0,0}, // h
+  {0,1,1,0,0,0}, // i
+  {0,1,1,1,0,0}, // j
+  {1,0,0,0,1,0}, // k
+  {1,0,1,0,1,0}, // l
+  {1,1,0,0,1,0}, // m
+  {1,1,0,1,1,0}, // n
+  {1,0,0,1,1,0}, // o
+  {1,1,1,0,1,0}, // p
+  {1,1,1,1,1,0}, // q
+  {1,0,1,1,1,0}, // r
+  {0,1,1,0,1,0}, // s
+  {0,1,1,1,1,0}, // t
+  {1,0,0,0,1,1}, // u
+  {1,0,1,0,1,1}, // v
+  {0,1,1,1,0,1}, // w
+  {1,1,0,0,1,1}, // x
+  {1,1,0,1,1,1}, // y
+  {1,0,0,1,1,1}  // z
+};
 
 void setup() {
   Serial.begin(9600);
+  Serial.println("System Initializing...");
 
-  // Initialize each servo
-  for (int i = 0; i < 6; i++) {
-    myServo[i].attach(pinofmotor[i]);
-    myServo[i].write(0);
+  // Initialize Servos
+  for (int i = 0; i < NUM_SERVOS; i++) {
+    brailleServos[i].attach(SERVO_PINS[i]);
+    brailleServos[i].write(SERVO_DOWN_ANGLE); // Start at rest
   }
 
-  // Initialize SD card
-  if (!SD.begin(chipSelect)) {
-    Serial.println("Initialization failed!");
-    return;
+  // Initialize SD Card
+  if (!SD.begin(SD_CHIP_SELECT)) {
+    Serial.println("Error: SD Card initialization failed!");
+    return; // Halt if SD fails
   }
-
-  Serial.println("Initialization done.");
+  Serial.println("System Ready. Reading file...");
 }
 
 void loop() {
-  // Open the data file
-  dataFile = SD.open("example.txt");/// file name change karna hai 
+  dataFile = SD.open("example.txt");
 
-  // Check if the file opened successfully
   if (dataFile) {
-    // Read data from the file until there's nothing left
     while (dataFile.available()) {
-      char value = dataFile.read();
-      alteraPontinhos(value);
-      movimentoMotor();
-      delay(500);
+      char rawChar = dataFile.read();
+      
+      // Process only alphabetic characters
+      if(isAlpha(rawChar)) {
+        processCharacter(rawChar);
+        delay(500); // Wait before next character
+      }
     }
-
-    // Close the file
     dataFile.close();
+    Serial.println("Translation Complete.");
+    while(1); // Stop loop after finishing file
   } else {
-    // If the file didn't open, print an error message
-    Serial.println("Error opening file.");
+    Serial.println("Error: Could not open example.txt");
+    delay(2000); // Retry delay
   }
 }
 
-void movimentoMotor(){
-    int i;
-    for(i=0;i<6;i++)
-    {
-        if(pontinhos[i]==HIGH){
-            for(posicaoServo[i]=0;posicaoServo[i]<90;posicaoServo[i]++){
-                myServo[i].write(posicaoServo[i]);
-                delay(5);
-            }
-        }
-    }
-    delay(1000);
-    for(i=0;i<6;i++)
-    {
-        if(pontinhos[i]==HIGH){
-            for(posicaoServo[i]=90;posicaoServo[i]>=0;posicaoServo[i]--){
-                myServo[i].write(posicaoServo[i]);
-                delay(5);
-            }
-        }
-    }
+/**
+ * Core Logic: Converts a character to servo movements
+ */
+void processCharacter(char c) {
+  // Convert upper case to lower case for mapping
+  c = toLowerCase(c);
+  
+  // Calculate index (a = 0, b = 1, etc.)
+  int index = c - 'a';
+
+  // Safety check to prevent array out of bounds
+  if (index < 0 || index > 25) return;
+
+  Serial.print("Translating: ");
+  Serial.println(c);
+
+  actuateBraille(index);
 }
 
-// void alteraPontinhos(char caractere) {
-//   for (int i = 0; i < 6; i++) {
-//     pontinhos[i] = LOW; // Reset all pontinhos to LOW
-//   }
+/**
+ * Physical Actuation: Moves servos based on the lookup index
+ */
+void actuateBraille(int mapIndex) {
+  // 1. Move all required servos UP simultaneously (Parallel Actuation)
+  for (int i = 0; i < NUM_SERVOS; i++) {
+    if (BRAILLE_MAP[mapIndex][i] == 1) {
+      brailleServos[i].write(SERVO_UP_ANGLE);
+    }
+  }
 
-//   switch (caractere) {
-//     case 'a':
-//       pontinhos[0] = HIGH;
-//       break;
-//     case 'b':
-//       pontinhos[0] = HIGH;
-//       pontinhos[2] = HIGH;
-//       break;
-//     // Add more cases as needed
-//     default:
-//       // Handle unsupported characters or do nothing
-//       break;
-//   }
-// }
-char alteraPontinhos (char caractere) {
-int i;
-for(i = 0; i < 6; i++)
-{
-pontinhos[i] = LOW;
+  // 2. Hold the pattern for the user to feel
+  delay(ACTUATION_DELAY);
+
+  // 3. Reset all servos DOWN simultaneously
+  resetServos();
 }
-switch (caractere) {
-case 'a':
-pontinhos[0] = HIGH;
-break;
-case 'b':
-pontinhos[0] = HIGH;
-pontinhos[2] = HIGH;
-break;
-case 'c':
-pontinhos[0] = HIGH;
-pontinhos[1] = HIGH;
-break;
-case 'd':
-pontinhos[0] = HIGH;
-pontinhos[1] = HIGH;
-pontinhos[3] = HIGH;
-break;
-case 'e':
-pontinhos[0] = HIGH;
-pontinhos[3] = HIGH;
-break;
-case 'f':
-pontinhos[0] = HIGH;
-pontinhos[1] = HIGH;
-pontinhos[2] = HIGH;
-break;
-case 'g':
-pontinhos[0] = HIGH;
-pontinhos[1] = HIGH;
-pontinhos[2] = HIGH;
-pontinhos[3] = HIGH;
-break;
-case 'h':
-pontinhos[0] = HIGH;
-pontinhos[2] = HIGH;
-pontinhos[3] = HIGH;
-break;
-case 'i':
-pontinhos[1] = HIGH;
-pontinhos[2] = HIGH;
-break;
-case 'j':
-pontinhos[1] = HIGH;
-pontinhos[2] = HIGH;
-pontinhos[3] = HIGH;
-break;
-case 'k':
-pontinhos[0] = HIGH;
-pontinhos[4] = HIGH;
-break;
-case 'l':
-pontinhos[0] = HIGH;
-pontinhos[2] = HIGH;
-pontinhos[4] = HIGH;
-break;
-case 'm':
-pontinhos[0] = HIGH;
-pontinhos[1] = HIGH;
-pontinhos[4] = HIGH;
-break;
-case 'n':
-pontinhos[0] = HIGH;
-pontinhos[1] = HIGH;
-pontinhos[3] = HIGH;
-pontinhos[4] = HIGH;
-break;
-case 'o':
-pontinhos[0] = HIGH;
-pontinhos[3] = HIGH;
-pontinhos[4] = HIGH;
-break;
-case 'p':
-pontinhos[0] = HIGH;
-pontinhos[1] = HIGH;
-pontinhos[2] = HIGH;
-pontinhos[4] = HIGH;
-break;
-case 'q':
-pontinhos[0] = HIGH;
-pontinhos[1] = HIGH;
-pontinhos[2] = HIGH;
-pontinhos[3] = HIGH;
-pontinhos[4] = HIGH;
-break;
-case 'r':
-pontinhos[0] = HIGH;
-pontinhos[2] = HIGH;
-pontinhos[3] = HIGH;
-pontinhos[4] = HIGH;
-break;
-case 's':
-pontinhos[1] = HIGH;
-pontinhos[2] = HIGH;
-pontinhos[4] = HIGH;
-break;
-case 't':
-pontinhos[1] = HIGH;
-pontinhos[2] = HIGH;
-pontinhos[3] = HIGH;
-pontinhos[4] = HIGH;
-break;
-case 'u':
-pontinhos[0] = HIGH;
-pontinhos[4] = HIGH;
-pontinhos[5] = HIGH;
-break;
-case 'v':
-pontinhos[0] = HIGH;
-pontinhos[2] = HIGH;
-pontinhos[4] = HIGH;
-pontinhos[5] = HIGH;
-break;
-case 'w':
-pontinhos[1] = HIGH;
-pontinhos[2] = HIGH;
-pontinhos[3] = HIGH;
-pontinhos[5] = HIGH;
-break;
-case 'x':
-pontinhos[0] = HIGH;
-pontinhos[1] = HIGH;
-pontinhos[4] = HIGH;
-pontinhos[5] = HIGH;
-break;
-case 'y':
-pontinhos[0] = HIGH;
-pontinhos[1] = HIGH;
-pontinhos[3] = HIGH;
-pontinhos[4] = HIGH;
-pontinhos[5] = HIGH;
-break;
-case 'z':
-pontinhos[0] = HIGH;
-pontinhos[3] = HIGH;
-pontinhos[4] = HIGH;
-pontinhos[5] = HIGH;
-break;
-}
+
+void resetServos() {
+  for (int i = 0; i < NUM_SERVOS; i++) {
+    brailleServos[i].write(SERVO_DOWN_ANGLE);
+  }
 }
